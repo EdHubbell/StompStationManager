@@ -26,8 +26,8 @@ written via **save-from-live-state** (save targets the slot matching the name), 
 - `write_slot.ps1` — guarded slot write (backup + read-back verify).
 - `save_experiment.ps1` — load a `.pst`'s params + save-as to a named slot.
 
-## fixtures/
-Real exported `.pst` presets, used as round-trip test fixtures.
+## presets/
+Real exported `.pst` presets (the pedal's own `root\presets` format), used as round-trip test data.
 
 ## Hardware note
 Writing presets changes the pedal's live/active state. The app takes backups before writes and

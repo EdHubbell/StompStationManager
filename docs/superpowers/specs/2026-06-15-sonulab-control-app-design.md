@@ -27,14 +27,14 @@ VoidX's .nam→device-binary conversion), BLE/WiFi transports.
 ```
 Sonulab.sln
 ├─ Sonulab.Core   (no UI; pure, unit-testable)
-│   Transport:  ISonuLink  -> SerialSonuLink (System.IO.Ports) | FakeSonuLink (in-memory, fixtures)
+│   Transport:  ISonuLink  -> SerialSonuLink (System.IO.Ports) | FakeSonuLink (in-memory, seeded from presets/)
 │   Protocol:   SonuClient  -> ReadAsync/BrowseAsync/WriteAsync/DReadAsync/DWriteAsync
 │                              (serialized 1-in-flight queue, NUL framing, meter filter, ACK/timeout/retry)
 │   Model:      NodeTree, NodeSchema (from browse), Slot, PresetBlob (.pst parse/serialize), Param
-│   Services:   DeviceRepository (lists, select, save), SlotService (dread/dwrite blob move/copy),
+│   Services:   DeviceRepository (lists, select, save), SlotService (dread backup; write-to-slot via name+save),
 │               PresetEditor (schema+values), BackupService (.pst snapshot/restore)
 ├─ Sonulab.App   (Avalonia MVVM, CommunityToolkit.Mvvm)
-└─ Sonulab.Tests (xUnit; FakeSonuLink + real *.pst fixtures + recorded device transcripts)
+└─ Sonulab.Tests (xUnit; FakeSonuLink + real *.pst presets (presets/) + recorded device transcripts)
 ```
 `SonuClient` mirrors the wire verbs faithfully; feature logic lives in the services above it.
 
@@ -76,7 +76,7 @@ Sonulab.sln
 - **Wire-log debug panel** (every command/response) for diagnosis.
 
 ## 7. Testing (TDD in Sonulab.Core)
-- `.pst` parse->serialize byte-identical round-trip (fixtures = existing `*.pst`).
+- `.pst` parse->serialize byte-identical round-trip (test data = the `presets/` `*.pst`).
 - Reorder/duplicate/rename/delete produce expected slot states; simulated failure -> exact rollback.
 - Protocol: NUL framing, meter filtering, dread/dwrite chunk math (64/96/32), ACK/timeout/retry.
 - Contract tests replay recorded device transcripts (from the Phase 0 captures) against FakeSonuLink.
