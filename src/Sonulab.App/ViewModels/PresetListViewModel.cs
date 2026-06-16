@@ -85,11 +85,6 @@ public partial class PresetListViewModel : ObservableObject
         if (Selected is { IsEmpty: false } s) await RunAsync($"Deleting '{s.Name}'…", () => _repo.DeleteAsync(s.Index));
     }
 
-    [RelayCommand] private async Task RenameAsync(string? newName)
-    {
-        if (Selected is { } s && !string.IsNullOrWhiteSpace(newName)) await RunAsync($"Renaming…", () => _repo.RenameAsync(s.Index, newName!));
-    }
-
     [RelayCommand] private async Task CommitRenameAsync(PresetItemViewModel? item)
     {
         if (item is not { IsEditing: true } s) return;          // guard: Escape-then-LostFocus won't re-commit

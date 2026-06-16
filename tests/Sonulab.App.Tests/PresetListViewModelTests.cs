@@ -54,15 +54,6 @@ public class PresetListViewModelTests
         Assert.True(vm.Items[2].IsEmpty);
     }
 
-    [Fact] public async Task Rename_changes_selected_name()
-    {
-        var (vm, _) = Make();
-        await vm.RefreshCommand.ExecuteAsync(null);
-        vm.Selected = vm.Items[0];
-        await vm.RenameCommand.ExecuteAsync("Aprime");
-        Assert.Equal("Aprime", vm.Items[0].Name);
-    }
-
     [Fact] public async Task Writes_are_gated_when_not_allowed()
     {
         var dev = new FakePresetDevice();
