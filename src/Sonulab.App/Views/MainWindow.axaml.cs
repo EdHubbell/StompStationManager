@@ -1,5 +1,4 @@
 using Avalonia.Controls;
-using FluentAvalonia.UI.Controls;
 
 namespace Sonulab.App.Views;
 
@@ -8,15 +7,13 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        NavView.SelectionChanged += OnNavSelectionChanged;
-        // Select Presets by default
-        NavView.SelectedItem = NavPresets;
+        NavList.SelectionChanged += OnNavSelectionChanged;
     }
 
-    private void OnNavSelectionChanged(object? sender, NavigationViewSelectionChangedEventArgs e)
+    private void OnNavSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        PresetsPage.IsVisible = ReferenceEquals(e.SelectedItem, NavPresets);
-        AmpsPage.IsVisible    = ReferenceEquals(e.SelectedItem, NavAmps);
-        IRsPage.IsVisible     = ReferenceEquals(e.SelectedItem, NavIRs);
+        PresetsPage.IsVisible = NavList.SelectedIndex == 0;
+        AmpsPage.IsVisible    = NavList.SelectedIndex == 1;
+        IRsPage.IsVisible     = NavList.SelectedIndex == 2;
     }
 }

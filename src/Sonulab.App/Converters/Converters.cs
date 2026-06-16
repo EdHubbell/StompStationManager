@@ -1,7 +1,6 @@
 using System.Globalization;
 using Avalonia.Data.Converters;
 using Avalonia.Media;
-using FluentAvalonia.UI.Controls;
 
 namespace Sonulab.App.Converters;
 
@@ -46,20 +45,16 @@ public static class Eq
 }
 
 /// <summary>
-/// Converts ConnectionViewModel.IsConnected (bool) to a FluentAvalonia Symbol.
+/// Converts IsConnected (bool) to a brush for the status dot Ellipse.
+/// true  => LimeGreen (connected)
+/// false => Gray (disconnected)
 /// </summary>
-public static class Icons
+public sealed class BoolToBrush : IValueConverter
 {
-    public static readonly IValueConverter PlugState =
-        new BoolToSymbolConverter(Symbol.Accept, Symbol.Cancel);
-
-    private sealed class BoolToSymbolConverter(Symbol whenTrue, Symbol whenFalse) : IValueConverter
-    {
-        public object? Convert(object? value, Type _, object? __, CultureInfo ___) =>
-            value is bool b && b ? whenTrue : (object?)whenFalse;
-        public object? ConvertBack(object? v, Type _, object? __, CultureInfo ___) =>
-            throw new NotSupportedException();
-    }
+    public static readonly BoolToBrush Connected = new();
+    public object? Convert(object? value, Type t, object? p, CultureInfo c)
+        => value is true ? Brushes.LimeGreen : Brushes.Gray;
+    public object? ConvertBack(object? v, Type t, object? p, CultureInfo c) => throw new NotSupportedException();
 }
 
 /// <summary>

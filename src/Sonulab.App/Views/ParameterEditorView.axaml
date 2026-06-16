@@ -2,7 +2,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Sonulab.App.ViewModels"
              xmlns:conv="using:Sonulab.App.Converters"
-             xmlns:ui="using:FluentAvalonia.UI.Controls"
              x:Class="Sonulab.App.Views.ParameterEditorView"
              x:DataType="vm:ParameterEditorViewModel">
   <DockPanel>
@@ -11,13 +10,13 @@
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="8,6,8,4">
       <Button Command="{Binding LoadCommand}" ToolTip.Tip="Load parameters from device">
         <StackPanel Orientation="Horizontal" Spacing="6">
-          <ui:SymbolIcon Symbol="Download" FontSize="16"/>
+          <PathIcon Data="{StaticResource Icon.Refresh}" Width="16" Height="16"/>
           <TextBlock Text="Load" VerticalAlignment="Center"/>
         </StackPanel>
       </Button>
       <Button Command="{Binding SaveCommand}" ToolTip.Tip="Save parameters to device">
         <StackPanel Orientation="Horizontal" Spacing="6">
-          <ui:SymbolIcon Symbol="Save" FontSize="16"/>
+          <PathIcon Data="{StaticResource Icon.Save}" Width="16" Height="16"/>
           <TextBlock Text="Save" VerticalAlignment="Center"/>
         </StackPanel>
       </Button>

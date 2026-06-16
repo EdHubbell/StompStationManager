@@ -1,7 +1,6 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:Sonulab.App.ViewModels"
-             xmlns:ui="using:FluentAvalonia.UI.Controls"
              xmlns:conv="using:Sonulab.App.Converters"
              x:Class="Sonulab.App.Views.PresetListView"
              x:DataType="vm:PresetListViewModel">
@@ -10,19 +9,19 @@
     <!-- Icon command bar -->
     <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="4" Margin="8,6,8,4">
       <Button Command="{Binding RefreshCommand}" ToolTip.Tip="Refresh">
-        <ui:SymbolIcon Symbol="Refresh" FontSize="16"/>
+        <PathIcon Data="{StaticResource Icon.Refresh}" Width="16" Height="16"/>
       </Button>
       <Button Command="{Binding MoveUpCommand}" ToolTip.Tip="Move up">
-        <ui:SymbolIcon Symbol="ChevronUp" FontSize="16"/>
+        <PathIcon Data="{StaticResource Icon.ChevronUp}" Width="16" Height="16"/>
       </Button>
       <Button Command="{Binding MoveDownCommand}" ToolTip.Tip="Move down">
-        <ui:SymbolIcon Symbol="ChevronDown" FontSize="16"/>
+        <PathIcon Data="{StaticResource Icon.ChevronDown}" Width="16" Height="16"/>
       </Button>
       <Button Command="{Binding DuplicateCommand}" ToolTip.Tip="Duplicate">
-        <ui:SymbolIcon Symbol="Copy" FontSize="16"/>
+        <PathIcon Data="{StaticResource Icon.Copy}" Width="16" Height="16"/>
       </Button>
       <Button Command="{Binding DeleteCommand}" ToolTip.Tip="Delete">
-        <ui:SymbolIcon Symbol="Delete" FontSize="16"/>
+        <PathIcon Data="{StaticResource Icon.Delete}" Width="16" Height="16"/>
       </Button>
     </StackPanel>
 
