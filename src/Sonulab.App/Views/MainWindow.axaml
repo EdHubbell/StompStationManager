@@ -1,20 +1,111 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:Sonulab.App.ViewModels"
-        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
-        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+        xmlns:ui="using:FluentAvalonia.UI.Controls"
+        xmlns:conv="using:Sonulab.App.Converters"
         x:Class="Sonulab.App.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Icon="/Assets/avalonia-logo.ico"
-        Title="Sonulab.App">
+        Width="1100" Height="700"
+        MinWidth="800" MinHeight="500"
+        Title="StompStation Manager">
 
-    <Design.DataContext>
-        <!-- This only sets the DataContext for the previewer in an IDE,
-             to set the actual DataContext for runtime, set the DataContext property in code (look at App.axaml.cs) -->
-        <vm:MainWindowViewModel/>
-    </Design.DataContext>
+  <Design.DataContext>
+    <vm:MainWindowViewModel/>
+  </Design.DataContext>
 
-    <TextBlock Text="{Binding Greeting}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+  <DockPanel>
+
+    <!-- ===== Top connection bar ===== -->
+    <Border DockPanel.Dock="Top"
+            Padding="12,8"
+            Background="{DynamicResource SolidBackgroundFillColorSecondaryBrush}">
+      <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+
+        <Button Command="{Binding Connection.ConnectCommand}"
+                ToolTip.Tip="Connect to StompStation">
+          <StackPanel Orientation="Horizontal" Spacing="6">
+            <ui:SymbolIcon Symbol="Sync" FontSize="16"/>
+            <TextBlock Text="Connect" VerticalAlignment="Center"/>
+          </StackPanel>
+        </Button>
+
+        <ui:SymbolIcon
+            Symbol="{Binding Connection.IsConnected, Converter={x:Static conv:Icons.PlugState}}"
+            FontSize="18" VerticalAlignment="Center"/>
+
+        <TextBlock Text="{Binding Connection.Status}"
+                   VerticalAlignment="Center"
+                   Theme="{StaticResource BodyStrongTextBlockStyle}"/>
+
+      </StackPanel>
+    </Border>
+
+    <!-- ===== NavigationView rail + Presets page ===== -->
+    <!--
+      NavigationView is used for the Fluent left rail.
+      Content switching for Amps/IRs is handled in code-behind (MainWindow.axaml.cs)
+      by listening to SelectionChanged and toggling page panel visibility.
+      Only the Presets page is functional in v1; Amps/IRs show a placeholder.
+    -->
+    <ui:NavigationView x:Name="NavView"
+                       PaneDisplayMode="Left"
+                       IsSettingsVisible="False"
+                       IsBackButtonVisible="False"
+                       OpenPaneLength="180">
+
+      <ui:NavigationView.MenuItems>
+        <ui:NavigationViewItem x:Name="NavPresets" Content="Presets">
+          <ui:NavigationViewItem.IconSource>
+            <ui:SymbolIconSource Symbol="List"/>
+          </ui:NavigationViewItem.IconSource>
+        </ui:NavigationViewItem>
+        <ui:NavigationViewItem x:Name="NavAmps" Content="Amps">
+          <ui:NavigationViewItem.IconSource>
+            <ui:SymbolIconSource Symbol="Audio"/>
+          </ui:NavigationViewItem.IconSource>
+        </ui:NavigationViewItem>
+        <ui:NavigationViewItem x:Name="NavIRs" Content="IRs">
+          <ui:NavigationViewItem.IconSource>
+            <ui:SymbolIconSource Symbol="Speaker2"/>
+          </ui:NavigationViewItem.IconSource>
+        </ui:NavigationViewItem>
+      </ui:NavigationView.MenuItems>
+
+      <ui:NavigationView.Content>
+        <Panel>
+
+          <!-- Presets page: PresetListView (left) + ParameterEditorView (right) -->
+          <Grid x:Name="PresetsPage"
+                ColumnDefinitions="380,*"
+                Margin="12">
+            <ContentControl Grid.Column="0"
+                            Content="{Binding Presets}"
+                            Margin="0,0,8,0"/>
+            <ContentControl Grid.Column="1"
+                            Content="{Binding Editor}"/>
+          </Grid>
+
+          <!-- Amps placeholder -->
+          <TextBlock x:Name="AmpsPage"
+                     Text="Amp list — coming soon"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center"
+                     Opacity="0.5"
+                     IsVisible="False"/>
+
+          <!-- IRs placeholder -->
+          <TextBlock x:Name="IRsPage"
+                     Text="IR list — coming soon"
+                     HorizontalAlignment="Center"
+                     VerticalAlignment="Center"
+                     Opacity="0.5"
+                     IsVisible="False"/>
+
+        </Panel>
+      </ui:NavigationView.Content>
+
+    </ui:NavigationView>
+
+  </DockPanel>
 
 </Window>

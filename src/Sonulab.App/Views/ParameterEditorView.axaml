@@ -1,0 +1,69 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:Sonulab.App.ViewModels"
+             xmlns:conv="using:Sonulab.App.Converters"
+             xmlns:ui="using:FluentAvalonia.UI.Controls"
+             x:Class="Sonulab.App.Views.ParameterEditorView"
+             x:DataType="vm:ParameterEditorViewModel">
+  <DockPanel>
+
+    <!-- Load / Save toolbar -->
+    <StackPanel DockPanel.Dock="Top" Orientation="Horizontal" Spacing="8" Margin="8,6,8,4">
+      <Button Command="{Binding LoadCommand}" ToolTip.Tip="Load parameters from device">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <ui:SymbolIcon Symbol="Download" FontSize="16"/>
+          <TextBlock Text="Load" VerticalAlignment="Center"/>
+        </StackPanel>
+      </Button>
+      <Button Command="{Binding SaveCommand}" ToolTip.Tip="Save parameters to device">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <ui:SymbolIcon Symbol="Save" FontSize="16"/>
+          <TextBlock Text="Save" VerticalAlignment="Center"/>
+        </StackPanel>
+      </Button>
+      <TextBlock Text="●" IsVisible="{Binding IsDirty}"
+                 Foreground="#FF9900" VerticalAlignment="Center"
+                 ToolTip.Tip="Unsaved changes"/>
+    </StackPanel>
+
+    <!-- Empty state hint -->
+    <TextBlock DockPanel.Dock="Top"
+               Text="Select a preset and click Load"
+               HorizontalAlignment="Center" Opacity="0.5" Margin="0,24"
+               IsVisible="{Binding Fields.Count, Converter={x:Static conv:Eq.ZeroCount}}"/>
+
+    <!-- Scrollable field list -->
+    <ScrollViewer>
+      <ItemsControl ItemsSource="{Binding Fields}">
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="vm:ParameterFieldViewModel">
+            <Grid ColumnDefinitions="180,*" Margin="8,3">
+              <TextBlock Grid.Column="0" Text="{Binding Label}"
+                         VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                         ToolTip.Tip="{Binding Label}"/>
+              <Panel Grid.Column="1">
+                <!-- float: Slider + numeric readout -->
+                <StackPanel Orientation="Horizontal" Spacing="6"
+                            IsVisible="{Binding Kind, Converter={x:Static conv:Eq.Float}}">
+                  <Slider Minimum="{Binding Min}" Maximum="{Binding Max}"
+                          Value="{Binding Number}" Width="160" VerticalAlignment="Center"/>
+                  <TextBlock Text="{Binding Number, StringFormat='{}{0:F2}'}"
+                             Width="54" VerticalAlignment="Center"
+                             FontFamily="Consolas,Cascadia Mono,monospace" FontSize="11"/>
+                </StackPanel>
+                <!-- enum / plist: ComboBox -->
+                <ComboBox ItemsSource="{Binding Options}" SelectedItem="{Binding Text}"
+                          MinWidth="160"
+                          IsVisible="{Binding Kind, Converter={x:Static conv:Eq.EnumOrPlist}}"/>
+                <!-- string: TextBox -->
+                <TextBox Text="{Binding Text}" MinWidth="160"
+                         IsVisible="{Binding Kind, Converter={x:Static conv:Eq.Str}}"/>
+              </Panel>
+            </Grid>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </ScrollViewer>
+
+  </DockPanel>
+</UserControl>

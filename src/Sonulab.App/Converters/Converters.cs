@@ -1,0 +1,87 @@
+using System.Globalization;
+using Avalonia.Data.Converters;
+using Avalonia.Media;
+using FluentAvalonia.UI.Controls;
+
+namespace Sonulab.App.Converters;
+
+/// <summary>
+/// Equality / predicate converters for XAML bindings.
+/// </summary>
+public static class Eq
+{
+    // --- Kind converters (ParameterFieldViewModel.Kind -> bool for IsVisible) ---
+    public static readonly IValueConverter Float       = new KindConverter("float");
+    public static readonly IValueConverter Enum        = new KindConverter("enum");
+    public static readonly IValueConverter Plist       = new KindConverter("plist");
+    public static readonly IValueConverter Str         = new KindConverter("string");
+    /// <summary>Visible for both enum and plist (rendered as ComboBox).</summary>
+    public static readonly IValueConverter EnumOrPlist = new KindMultiConverter("enum", "plist");
+    /// <summary>int == 0 -> true (used for empty-state TextBlock visibility).</summary>
+    public static readonly IValueConverter ZeroCount   = new ZeroCountConverter();
+
+    private sealed class KindConverter(string kind) : IValueConverter
+    {
+        public object? Convert(object? value, Type _, object? __, CultureInfo ___) =>
+            value is string s && s == kind;
+        public object? ConvertBack(object? v, Type _, object? __, CultureInfo ___) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class KindMultiConverter(params string[] kinds) : IValueConverter
+    {
+        public object? Convert(object? value, Type _, object? __, CultureInfo ___) =>
+            value is string s && kinds.Contains(s);
+        public object? ConvertBack(object? v, Type _, object? __, CultureInfo ___) =>
+            throw new NotSupportedException();
+    }
+
+    private sealed class ZeroCountConverter : IValueConverter
+    {
+        public object? Convert(object? value, Type _, object? __, CultureInfo ___) =>
+            value is int i && i == 0;
+        public object? ConvertBack(object? v, Type _, object? __, CultureInfo ___) =>
+            throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// Converts ConnectionViewModel.IsConnected (bool) to a FluentAvalonia Symbol.
+/// </summary>
+public static class Icons
+{
+    public static readonly IValueConverter PlugState =
+        new BoolToSymbolConverter(Symbol.Accept, Symbol.Cancel);
+
+    private sealed class BoolToSymbolConverter(Symbol whenTrue, Symbol whenFalse) : IValueConverter
+    {
+        public object? Convert(object? value, Type _, object? __, CultureInfo ___) =>
+            value is bool b && b ? whenTrue : (object?)whenFalse;
+        public object? ConvertBack(object? v, Type _, object? __, CultureInfo ___) =>
+            throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// bool -> FontStyle: true => Italic (empty preset slot), false => Normal.
+/// </summary>
+public sealed class BoolToItalic : IValueConverter
+{
+    public static readonly BoolToItalic Instance = new();
+    public object? Convert(object? value, Type _, object? __, CultureInfo ___) =>
+        value is bool b && b ? FontStyle.Italic : FontStyle.Normal;
+    public object? ConvertBack(object? v, Type _, object? __, CultureInfo ___) =>
+        throw new NotSupportedException();
+}
+
+/// <summary>
+/// bool -> double opacity: true => 0.4 (empty slot dimmed), false => 1.0.
+/// </summary>
+public sealed class BoolToOpacity : IValueConverter
+{
+    public static readonly BoolToOpacity Instance = new();
+    public object? Convert(object? value, Type _, object? __, CultureInfo ___) =>
+        value is bool b && b ? 0.4 : 1.0;
+    public object? ConvertBack(object? v, Type _, object? __, CultureInfo ___) =>
+        throw new NotSupportedException();
+}
