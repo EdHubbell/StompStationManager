@@ -22,12 +22,21 @@ public partial class MainWindowViewModel : ObservableObject
         _connection = new ConnectionViewModel(session, portList);
         _connection.Connected += (_, _) =>
         {
-            Presets = new PresetListViewModel(
+            var presets = new PresetListViewModel(
                 _connection.Repository!,
                 _connection.Reorder!,
                 _connection.WritesAllowed);
-            _ = Presets.RefreshCommand.ExecuteAsync(null);
-            Editor = new ParameterEditorViewModel(_connection.Client!);
+            var editor = new ParameterEditorViewModel(_connection.Client!);
+            // Selecting a preset activates + loads it into the editor (dedup is handled in LoadForAsync).
+            presets.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(PresetListViewModel.Selected)
+                    && presets.Selected is { IsEmpty: false } sel)
+                    editor.LoadForCommand.Execute(sel.Name);
+            };
+            Presets = presets;
+            Editor = editor;
+            _ = presets.RefreshCommand.ExecuteAsync(null);
         };
     }
 }
