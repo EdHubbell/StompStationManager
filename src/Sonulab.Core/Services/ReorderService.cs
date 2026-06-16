@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Sonulab.Core.Model;
 
 namespace Sonulab.Core.Services;
@@ -6,6 +7,7 @@ public sealed record ReorderProgress(int Done, int Total, string Message);
 
 public sealed class ReorderService
 {
+    private static readonly NLog.Logger Log = NLog.LogManager.GetCurrentClassLogger();
     private const string TempPrefix = "__sstmp_";
     private readonly DeviceRepository _repo;
     public ReorderService(DeviceRepository repo) => _repo = repo;
@@ -25,8 +27,11 @@ public sealed class ReorderService
 
         // Backup the affected range for rollback.
         var backup = new Dictionary<int, (string Name, PresetDocument Doc)>();
+        var swBackup = Stopwatch.StartNew();
         for (int i = min; i <= max; i++)
             if (!slots[i].IsEmpty) backup[i] = (origName[i], await _repo.ReadPresetAsync(i, ct));
+        swBackup.Stop();
+        Log.Debug("MoveAsync from={0} to={1}: backed up {2} slot(s) in {3}ms", from, to, backup.Count, swBackup.ElapsedMilliseconds);
 
         // Temp slot: an empty slot OUTSIDE the affected range.
         int temp = -1;
@@ -40,10 +45,15 @@ public sealed class ReorderService
 
         try
         {
-            if (temp >= 0 && !rangeHasEmpty)
+            var swPath = Stopwatch.StartNew();
+            bool fast = temp >= 0 && !rangeHasEmpty;
+            if (fast)
                 await RotateViaSelectSaveAsync(origName, from, to, min, max, temp, progress, ct);
             else
                 await WriteRangeViaReplayAsync(origName, backup, from, to, min, max, progress, ct);
+            swPath.Stop();
+            Log.Debug("MoveAsync from={0} to={1}: {2} path took {3}ms", from, to,
+                fast ? "rotate(select+save)" : "replay(param)", swPath.ElapsedMilliseconds);
         }
         catch (Exception original)
         {
@@ -75,13 +85,16 @@ public sealed class ReorderService
         if (slots.Any(s => s.Name.StartsWith(TempPrefix, StringComparison.Ordinal)))
             throw new InvalidOperationException($"A preset name uses the reserved prefix '{TempPrefix}'; rename it before reordering.");
 
-        if (!slots[to].IsEmpty)
-        {
+        bool occupied = !slots[to].IsEmpty;
+        Log.Debug("MoveStep from={0} up={1} -> to={2} ({3})", from, up, to, occupied ? "swap" : "relocate-into-empty");
+        var sw = Stopwatch.StartNew();
+        if (occupied)
             await MoveAsync(from, to, progress, ct);             // occupied neighbour: adjacent swap
-            return;
-        }
-
-        await RelocateToEmptyAsync(slots[from].Name, from, to, progress, ct);   // empty neighbour
+        else
+            await RelocateToEmptyAsync(slots[from].Name, from, to, progress, ct);   // empty neighbour
+        sw.Stop();
+        Log.Info("MoveStep from={0} -> to={1} ({2}) completed in {3}ms", from, to,
+            occupied ? "swap" : "relocate", sw.ElapsedMilliseconds);
     }
 
     // FAST PATH: move one preset into an EMPTY adjacent slot with a single select+save copy.

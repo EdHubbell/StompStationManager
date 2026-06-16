@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using Sonulab.Core.Model;
@@ -8,6 +9,7 @@ namespace Sonulab.Core;
 
 public sealed class SonuClient
 {
+    private static readonly NLog.Logger Log = NLog.LogManager.GetCurrentClassLogger();
     private readonly ISonuLink _link;
     private readonly SemaphoreSlim _gate = new(1, 1); // one command in flight
 
@@ -16,8 +18,18 @@ public sealed class SonuClient
     private async Task<string> SendAsync(string command, CancellationToken ct)
     {
         await _gate.WaitAsync(ct);
+        var sw = Stopwatch.StartNew();
         try { return await _link.SendAsync(command, ct); }
-        finally { _gate.Release(); }
+        finally
+        {
+            sw.Stop();
+            _gate.Release();
+            // Per-command device timing. The command head (verb + path) identifies it;
+            // long dwrite hex payloads are truncated so the log stays readable.
+            if (Log.IsDebugEnabled)
+                Log.Debug("cmd {0,5}ms  {1}", sw.ElapsedMilliseconds,
+                    command.Length > 70 ? command[..70] + "…" : command);
+        }
     }
 
     public async Task<string?> ReadValueAsync(string path, CancellationToken ct = default)
