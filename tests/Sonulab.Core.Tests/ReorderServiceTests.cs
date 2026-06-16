@@ -104,4 +104,55 @@ public class ReorderServiceTests
         await new ReorderService(r).MoveAsync(3, 1, new Progress<ReorderProgress>(p => { lock (seen) seen.Add(p); }));
         Assert.NotEmpty(seen);
     }
+
+    [Fact] public async Task Move_across_empty_interior_slot_reorders_without_data_loss()
+    {
+        var d = new FakePresetDevice();
+        d.SeedSlot(0, "A", new[] { @"root\app\amp\amp:{""value"":""mA""}" });
+        // slot 1 intentionally empty
+        d.SeedSlot(2, "C", new[] { @"root\app\amp\amp:{""value"":""mC""}" });
+        d.SeedSlot(3, "D", new[] { @"root\app\amp\amp:{""value"":""mD""}" });
+        await d.OpenAsync(); var r = Repo(d);
+        await new ReorderService(r).MoveAsync(3, 0);   // range [0,3] contains the empty slot -> fallback path
+        var names = await Names(r);
+        Assert.Equal(new[] { "D", "A", "", "C" }, names[..4]);
+        Assert.Equal("\"mD\"", await Amp(r, 0));
+        Assert.Equal("\"mA\"", await Amp(r, 1));
+        Assert.Equal("\"mC\"", await Amp(r, 3));
+    }
+
+    sealed class FailOnceOnFinalRename : FakePresetDevice
+    {
+        public bool Fired;
+        public override Task<string> SendAsync(string command, System.Threading.CancellationToken ct = default)
+        {
+            if (!Fired && command.StartsWith("dwrite root\\presets:", StringComparison.Ordinal) && command.Contains("\"chunk\":-1"))
+            {
+                var m = System.Text.RegularExpressions.Regex.Match(command, "\"value\":\"([0-9a-fA-F]*)\"");
+                if (m.Success)
+                {
+                    var hex = m.Groups[1].Value;
+                    var bytes = new byte[hex.Length / 2];
+                    for (int i = 0; i < bytes.Length; i++) bytes[i] = System.Convert.ToByte(hex.Substring(i * 2, 2), 16);
+                    var nm = System.Text.Encoding.ASCII.GetString(bytes).TrimEnd('\0');
+                    if (nm.Length > 0 && !nm.StartsWith("__sstmp_", StringComparison.Ordinal)) { Fired = true; throw new System.IO.IOException("rename fail"); }
+                }
+            }
+            return base.SendAsync(command, ct);
+        }
+    }
+
+    [Fact] public async Task Rollback_restores_original_on_finalize_rename_failure()
+    {
+        var d = new FailOnceOnFinalRename();
+        d.SeedSlot(0, "A", new[] { @"root\app\amp\amp:{""value"":""mA""}" });
+        d.SeedSlot(1, "B", new[] { @"root\app\amp\amp:{""value"":""mB""}" });
+        d.SeedSlot(2, "C", new[] { @"root\app\amp\amp:{""value"":""mC""}" });
+        d.SeedSlot(3, "D", new[] { @"root\app\amp\amp:{""value"":""mD""}" });
+        await d.OpenAsync(); var r = Repo(d);
+        await Assert.ThrowsAnyAsync<System.Exception>(() => new ReorderService(r).MoveAsync(3, 0));
+        Assert.True(d.Fired);
+        Assert.Equal(new[] { "A", "B", "C", "D" }, (await Names(r))[..4]);
+        Assert.Equal("\"mD\"", await Amp(r, 3));
+    }
 }

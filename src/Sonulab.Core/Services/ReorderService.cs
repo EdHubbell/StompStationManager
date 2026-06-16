@@ -33,15 +33,28 @@ public sealed class ReorderService
         for (int i = 0; i < slots.Count; i++)
             if ((i < min || i > max) && slots[i].IsEmpty) { temp = i; break; }
 
+        // Fix 1: fast path is only valid when no interior slot (other than `from`) is empty.
+        bool rangeHasEmpty = false;
+        for (int i = min; i <= max; i++)
+            if (i != from && slots[i].IsEmpty) { rangeHasEmpty = true; break; }
+
         try
         {
-            if (temp >= 0) await RotateViaSelectSaveAsync(origName, from, to, min, max, temp, progress, ct);
-            else await WriteRangeViaReplayAsync(origName, backup, from, to, min, max, progress, ct);
+            if (temp >= 0 && !rangeHasEmpty)
+                await RotateViaSelectSaveAsync(origName, from, to, min, max, temp, progress, ct);
+            else
+                await WriteRangeViaReplayAsync(origName, backup, from, to, min, max, progress, ct);
         }
         catch (Exception original)
         {
-            try { await RestoreRangeAsync(origName, backup, min, max, ct); }
-            catch (Exception rb) { throw new AggregateException("Reorder failed and rollback also failed; device may be inconsistent.", original, rb); }
+            // Fix 2: delete temp slot (holds only a staged copy; original is in backup).
+            if (temp >= 0) { try { await _repo.DeleteAsync(temp, CancellationToken.None); } catch { /* best effort */ } }
+            // Fix 3: rollback uses CancellationToken.None so a cancelled op still cleans up.
+            try { await RestoreRangeAsync(origName, backup, min, max, CancellationToken.None); }
+            catch (Exception rb)
+            {
+                throw new AggregateException("Reorder failed and rollback also failed; device may be inconsistent.", original, rb);
+            }
             throw;
         }
     }

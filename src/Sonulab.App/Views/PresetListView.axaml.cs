@@ -20,6 +20,7 @@ public partial class PresetListView : UserControl
         InitializeComponent();
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         AddHandler(DragDrop.DropEvent, OnDrop);
+        AddHandler(DragDrop.DragLeaveEvent, (_, _) => PresetDropIndicator.Hide());
     }
 
     private async void OnItemPointerPressed(object? sender, PointerPressedEventArgs e)

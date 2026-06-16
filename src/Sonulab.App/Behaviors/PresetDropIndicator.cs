@@ -32,9 +32,14 @@ public static class PresetDropIndicator
             _overlay.Children.Add(_line);
         }
 
-        // Attach to parent panel if not already.
-        if (_overlay.Parent is null && list.Parent is Panel panel)
-            panel.Children.Add(_overlay);
+        // Attach to the CURRENT parent panel, re-parenting if the overlay moved to a different panel.
+        if (list.Parent is Panel panel)
+        {
+            if (_overlay.Parent is Panel oldPanel && !ReferenceEquals(oldPanel, panel))
+                oldPanel.Children.Remove(_overlay);
+            if (_overlay.Parent is null)
+                panel.Children.Add(_overlay);
+        }
 
         // Compute Y position by finding the row at `index`.
         double y = 0;
@@ -68,6 +73,7 @@ public static class PresetDropIndicator
 
     public static void Hide()
     {
+        // Always detach regardless of how the overlay ended up parented.
         if (_overlay?.Parent is Panel p)
             p.Children.Remove(_overlay);
         _overlay = null;
