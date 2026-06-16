@@ -17,7 +17,8 @@ public static class FirmwareCatalog
     private static readonly Lazy<IReadOnlyList<TestedFirmware>> _default = new(() =>
     {
         var asm = typeof(FirmwareCatalog).Assembly;
-        var name = asm.GetManifestResourceNames().First(n => n.EndsWith("compatibility.json", StringComparison.Ordinal));
+        var name = asm.GetManifestResourceNames().FirstOrDefault(n => n.EndsWith("compatibility.json", StringComparison.Ordinal))
+            ?? throw new InvalidOperationException("compatibility.json not embedded — check Sonulab.Core.csproj <EmbeddedResource>.");
         using var s = asm.GetManifestResourceStream(name)!;
         using var r = new StreamReader(s);
         return Load(r.ReadToEnd());

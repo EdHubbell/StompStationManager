@@ -39,6 +39,12 @@ public sealed class DeviceRepository
         return PresetDocument.Parse(bytes);
     }
 
+    /// <summary>
+    /// Writes <paramref name="doc"/> into slot <paramref name="index"/> via name → replay → save → verify.
+    /// PRECONDITION: <paramref name="name"/> must be UNIQUE across all occupied slots — the device's
+    /// save-by-name matches the first slot with that name, so a duplicate name would save to the wrong slot.
+    /// (Plan 3b's reorder uses temporary unique names during a shuffle to honor this.)
+    /// </summary>
     public async Task WritePresetToSlotAsync(int index, string name, PresetDocument doc, bool verify = true, CancellationToken ct = default)
     {
         // 1) name the target slot so save-by-name lands here
@@ -72,6 +78,7 @@ public sealed class DeviceRepository
     {
         var buf = new byte[128];
         var b = System.Text.Encoding.ASCII.GetBytes(name);
+        // Preset names are ASCII and fit the device's 128-byte name field; longer names are truncated.
         Array.Copy(b, buf, Math.Min(b.Length, 128));
         return buf;
     }

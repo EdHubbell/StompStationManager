@@ -27,7 +27,6 @@ public class FakePresetDevice : ISonuLink
     static readonly Regex ReadRx = new(@"^read (\S+)$");
 
     static byte[] FromHex(string h) { var b = new byte[h.Length / 2]; for (int i = 0; i < b.Length; i++) b[i] = Convert.ToByte(h.Substring(i * 2, 2), 16); return b; }
-    static byte[] SlotBytes(Slot s) { var doc = PresetDocumentFrom(s.Lines); return doc; }
     static byte[] PresetDocumentFrom(List<string> lines)
     {
         var text = string.Join("\r\n", lines);
