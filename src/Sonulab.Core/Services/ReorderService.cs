@@ -84,10 +84,42 @@ public sealed class ReorderService
         await RelocateToEmptyAsync(slots[from].Name, from, to, progress, ct);   // empty neighbour
     }
 
-    // TEMPORARY STUB — replaced with the real implementation in a later task.
-    private Task RelocateToEmptyAsync(string origName, int from, int to,
-        IProgress<ReorderProgress>? progress, CancellationToken ct) =>
-        throw new NotImplementedException();
+    // FAST PATH: move one preset into an EMPTY adjacent slot with a single select+save copy.
+    private async Task RelocateToEmptyAsync(string origName, int from, int to,
+        IProgress<ReorderProgress>? progress, CancellationToken ct)
+    {
+        var backup = await _repo.ReadPresetAsync(from, ct);      // for verify + rollback
+        string temp = TempPrefix + "reloc";
+        try
+        {
+            ct.ThrowIfCancellationRequested();
+            await _repo.SelectPresetAsync(origName, ct);         // live = preset content
+            await _repo.RenameAsync(to, temp, ct);               // give the empty slot a unique name
+            await _repo.SaveCurrentAsAsync(temp, ct);            // device copies live content into slot `to`
+            await _repo.DeleteAsync(from, ct);                   // vacate the source slot
+            await _repo.RenameAsync(to, origName, ct);           // restore the preset's real name
+            progress?.Report(new ReorderProgress(1, 1, $"slot {to + 1}"));
+
+            var back = await _repo.ReadPresetAsync(to, ct);      // read-back verify
+            if (!back.ToBytes().AsSpan().SequenceEqual(backup.ToBytes()))
+                throw new InvalidOperationException($"Relocate verify failed for slot {to}.");
+        }
+        catch (Exception original)
+        {
+            try
+            {
+                // Restore: rebuild the source slot from backup, then clear the destination.
+                await _repo.WritePresetToSlotAsync(from, TempPrefix + "r", backup, verify: false, CancellationToken.None);
+                await _repo.RenameAsync(from, origName, CancellationToken.None);
+                await _repo.DeleteAsync(to, CancellationToken.None);
+            }
+            catch (Exception rb)
+            {
+                throw new AggregateException("Relocate failed and rollback also failed; device may be inconsistent.", original, rb);
+            }
+            throw;
+        }
+    }
 
     // FAST PATH: rotate [min,max] in place using select+save and one temp slot.
     private async Task RotateViaSelectSaveAsync(

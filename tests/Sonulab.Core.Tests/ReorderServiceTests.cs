@@ -194,4 +194,57 @@ public class ReorderServiceTests
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => new ReorderService(r).MoveStepAsync(from: 10, up: true));
     }
+
+    sealed class CountingDevice : FakePresetDevice
+    {
+        public int Saves, Selects, ParamWrites;
+        public override Task<string> SendAsync(string command, CancellationToken ct = default)
+        {
+            if (command.Contains("\"save\":\"save\"")) Saves++;
+            else if (command.StartsWith("write root\\app\\preset:", StringComparison.Ordinal)) Selects++;
+            else if (command.StartsWith("write root\\app\\", StringComparison.Ordinal)) ParamWrites++;
+            return base.SendAsync(command, ct);
+        }
+    }
+
+    [Fact] public async Task MoveStep_down_into_empty_relocates_with_one_copy()
+    {
+        var d = new CountingDevice();
+        d.SeedSlot(0, "A", new[] { @"root\app\amp\amp:{""value"":""mA""}" });   // slot 1 empty
+        await d.OpenAsync(); var r = Repo(d);
+        await new ReorderService(r).MoveStepAsync(from: 0, up: false);          // A relocates to slot 1
+        var names = await Names(r);
+        Assert.Equal("", names[0]);
+        Assert.Equal("A", names[1]);
+        Assert.Equal("\"mA\"", await Amp(r, 1));
+        Assert.Equal(1, d.Saves);            // ONE copy, not a 3-copy swap
+        Assert.Equal(0, d.ParamWrites);      // proves it did NOT use the slow param-replay fallback
+        Assert.True(d.Selects >= 1);
+    }
+
+    [Fact] public async Task MoveStep_up_into_empty_relocates()
+    {
+        var d = new FakePresetDevice();
+        d.SeedSlot(1, "A", new[] { @"root\app\amp\amp:{""value"":""mA""}" });   // slot 0 empty
+        await d.OpenAsync(); var r = Repo(d);
+        await new ReorderService(r).MoveStepAsync(from: 1, up: true);           // A relocates to slot 0
+        var names = await Names(r);
+        Assert.Equal("A", names[0]);
+        Assert.Equal("", names[1]);
+        Assert.Equal("\"mA\"", await Amp(r, 0));
+    }
+
+    [Fact] public async Task MoveStep_relocate_rolls_back_on_save_failure()
+    {
+        var d = new FailOnceOnSave(1);                                         // fail the relocate's save
+        d.SeedSlot(0, "A", new[] { @"root\app\amp\amp:{""value"":""mA""}" });   // slot 1 empty
+        await d.OpenAsync(); var r = Repo(d);
+        await Assert.ThrowsAnyAsync<System.Exception>(
+            () => new ReorderService(r).MoveStepAsync(from: 0, up: false));
+        Assert.True(d.Fired);
+        var names = await Names(r);
+        Assert.Equal("A", names[0]);          // original restored
+        Assert.Equal("", names[1]);           // destination left empty
+        Assert.Equal("\"mA\"", await Amp(r, 0));
+    }
 }
