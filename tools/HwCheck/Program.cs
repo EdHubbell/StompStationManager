@@ -57,6 +57,81 @@ if (ri >= 0 && ri + 3 < args.Length)
     return names[idx] == nm ? 0 : 4;
 }
 
+if (Array.IndexOf(args, "--reorder-probe") >= 0)
+{
+    Console.WriteLine("\n--- GUARDED REORDER PROBE (backup -> test list-write reorder -> restore -> time select+save) ---");
+    if (!c.WritesAllowed) { Console.WriteLine("writes not allowed; abort."); return 3; }
+    var client = session.Client!;
+    var backup = new BackupService(repo);
+    var bdir = System.IO.Path.GetFullPath(System.IO.Path.Combine("docs", "backups", "probe-" + DateTime.Now.ToString("yyyyMMdd-HHmmss")));
+    int nb = await backup.SnapshotAllAsync(bdir);
+    Console.WriteLine($"[backup] {nb} presets -> {bdir}");
+
+    static string Json(string[] a) => "[" + string.Join(",", a.Select(x => "\"" + x + "\"")) + "]";
+    var names0 = (await repo.ListPresetsAsync()).Select(s => s.Name).ToArray();
+
+    int i = -1;
+    for (int k = 0; k + 1 < names0.Length; k++) if (names0[k].Length > 0 && names0[k + 1].Length > 0) { i = k; break; }
+    if (i < 0) { Console.WriteLine("need two adjacent presets; abort."); return 3; }
+    Console.WriteLine($"[exp A] swap names[{i}]='{names0[i]}' <-> names[{i + 1}]='{names0[i + 1]}' via a root\\presets list write");
+
+    var cI = (await repo.ReadPresetAsync(i)).ToBytes();
+    var cJ = (await repo.ReadPresetAsync(i + 1)).ToBytes();
+
+    var swapped = names0.ToArray(); (swapped[i], swapped[i + 1]) = (swapped[i + 1], swapped[i]);
+    await client.WriteAsync(@"root\presets", Json(swapped));
+    await Task.Delay(800);
+
+    var names1 = (await repo.ListPresetsAsync()).Select(s => s.Name).ToArray();
+    bool namesSwapped = names1[i] == names0[i + 1] && names1[i + 1] == names0[i];
+    var aI = (await repo.ReadPresetAsync(i)).ToBytes();
+    var aJ = (await repo.ReadPresetAsync(i + 1)).ToBytes();
+    bool contentMoved = aI.AsSpan().SequenceEqual(cJ) && aJ.AsSpan().SequenceEqual(cI);
+    bool contentStayed = aI.AsSpan().SequenceEqual(cI) && aJ.AsSpan().SequenceEqual(cJ);
+    Console.WriteLine($"   names after: [{i}]='{names1[i]}' [{i + 1}]='{names1[i + 1]}'  (namesSwapped={namesSwapped})");
+    Console.WriteLine($"   content: movedWithNames={contentMoved}  stayedPut={contentStayed}");
+    Console.WriteLine(
+        (namesSwapped && contentMoved) ? "   => FINDING: list-write REORDERS content — near-free one-command reorder!" :
+        (namesSwapped && contentStayed) ? "   => FINDING: list-write changes NAMES ONLY (desyncs name/content) — NOT a safe reorder" :
+        (!namesSwapped) ? "   => FINDING: list-write had NO effect on order (not supported)" :
+        "   => FINDING: ambiguous");
+
+    // restore original order, then verify; fall back to per-slot restore from backup
+    await client.WriteAsync(@"root\presets", Json(names0));
+    await Task.Delay(800);
+    var namesR = (await repo.ListPresetsAsync()).Select(s => s.Name).ToArray();
+    var rI = (await repo.ReadPresetAsync(i)).ToBytes();
+    var rJ = (await repo.ReadPresetAsync(i + 1)).ToBytes();
+    bool restored = namesR.SequenceEqual(names0) && rI.AsSpan().SequenceEqual(cI) && rJ.AsSpan().SequenceEqual(cJ);
+    if (restored) Console.WriteLine("[restore] original order + content verified");
+    else
+    {
+        Console.WriteLine("[restore] mismatch — rewriting slots from backup");
+        foreach (var idx in new[] { i, i + 1 })
+        {
+            var f = System.IO.Directory.GetFiles(bdir, $"{idx:D2} - *.pst").FirstOrDefault();
+            if (f != null) await backup.RestoreSlotAsync(idx, f);
+        }
+        var ok = (await repo.ListPresetsAsync()).Select(s => s.Name).ToArray().SequenceEqual(names0);
+        Console.WriteLine(ok ? "[restore] backup rewrite OK" : "[restore] STILL OFF — check docs/backups manually");
+    }
+
+    // exp B: time select-by-name + save-to-slot (device copies content internally)
+    int e = (await repo.ListPresetsAsync()).First(s => s.IsEmpty).Index;
+    await repo.RenameAsync(e, "ProbeTmp");
+    var sw2 = System.Diagnostics.Stopwatch.StartNew();
+    await repo.SelectPresetAsync(names0[i]);
+    await repo.SaveCurrentAsAsync("ProbeTmp");
+    sw2.Stop();
+    bool selSaveOk = (await repo.ReadPresetAsync(e)).ToBytes().AsSpan().SequenceEqual(cI);
+    Console.WriteLine($"[exp B] select+save took {sw2.ElapsedMilliseconds} ms; content matches source={selSaveOk}  (vs ~12000 ms for 157-param replay)");
+    await repo.DeleteAsync(e);
+
+    session.Disconnect();
+    Console.WriteLine("RESULT: REORDER-PROBE COMPLETE");
+    return 0;
+}
+
 if (reorderTest)
 {
     Console.WriteLine("\n--- GUARDED REORDER TEST (small move, then move back) ---");
