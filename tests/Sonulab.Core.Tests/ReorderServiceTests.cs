@@ -247,4 +247,18 @@ public class ReorderServiceTests
         Assert.Equal("", names[1]);           // destination left empty
         Assert.Equal("\"mA\"", await Amp(r, 0));
     }
+
+    [Fact] public async Task MoveStep_relocate_rolls_back_on_final_rename_failure()
+    {
+        var d = new FailOnceOnFinalRename();
+        d.SeedSlot(0, "A", new[] { @"root\app\amp\amp:{""value"":""mA""}" });   // slot 1 empty
+        await d.OpenAsync(); var r = Repo(d);
+        await Assert.ThrowsAnyAsync<System.Exception>(
+            () => new ReorderService(r).MoveStepAsync(from: 0, up: false));     // fails at final rename, AFTER delete(from)
+        Assert.True(d.Fired);
+        var names = await Names(r);
+        Assert.Equal("A", names[0]);          // source rebuilt by rollback
+        Assert.Equal("", names[1]);           // destination cleared
+        Assert.Equal("\"mA\"", await Amp(r, 0));   // content restored, not just the name
+    }
 }
