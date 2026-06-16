@@ -6,6 +6,7 @@ public sealed record ReorderProgress(int Done, int Total, string Message);
 
 public sealed class ReorderService
 {
+    private const string TempPrefix = "__sstmp_";
     private readonly DeviceRepository _repo;
     public ReorderService(DeviceRepository repo) => _repo = repo;
 
@@ -16,83 +17,105 @@ public sealed class ReorderService
         if (to < 0 || to >= slots.Count) throw new ArgumentOutOfRangeException(nameof(to));
         if (from == to) return;
         if (slots[from].IsEmpty) throw new InvalidOperationException($"Slot {from} is empty; nothing to move.");
-        // Collision guard: our temporary slot names use TempPrefix. If a real preset already uses it,
-        // save-by-name could land in the wrong slot — refuse rather than risk corruption.
         if (slots.Any(s => s.Name.StartsWith(TempPrefix, StringComparison.Ordinal)))
-            throw new InvalidOperationException(
-                $"A preset name uses the reserved reorder prefix '{TempPrefix}'; rename it before reordering.");
-        var occupants = new int[slots.Count];
-        for (int i = 0; i < slots.Count; i++) occupants[i] = slots[i].IsEmpty ? -1 : i;
+            throw new InvalidOperationException($"A preset name uses the reserved prefix '{TempPrefix}'; rename it before reordering.");
 
-        var target = SlotPlanner.Move(occupants, from, to);
         var (min, max) = SlotPlanner.ChangedRange(from, to);
+        var origName = slots.Select(s => s.Name).ToArray();
 
-        // Snapshot the affected occupied slots (name + content) for both the write source and rollback.
-        var snap = new Dictionary<int, (string Name, PresetDocument Doc)>();
+        // Backup the affected range for rollback.
+        var backup = new Dictionary<int, (string Name, PresetDocument Doc)>();
         for (int i = min; i <= max; i++)
-            if (occupants[i] != -1)
-                snap[i] = (slots[i].Name, await _repo.ReadPresetAsync(i, ct));
+            if (!slots[i].IsEmpty) backup[i] = (origName[i], await _repo.ReadPresetAsync(i, ct));
+
+        // Temp slot: an empty slot OUTSIDE the affected range.
+        int temp = -1;
+        for (int i = 0; i < slots.Count; i++)
+            if ((i < min || i > max) && slots[i].IsEmpty) { temp = i; break; }
 
         try
         {
-            await WriteRangeAsync(target, snap, min, max, progress, ct);
+            if (temp >= 0) await RotateViaSelectSaveAsync(origName, from, to, min, max, temp, progress, ct);
+            else await WriteRangeViaReplayAsync(origName, backup, from, to, min, max, progress, ct);
         }
         catch (Exception original)
         {
-            try
-            {
-                await WriteRangeAsync(occupants, snap, min, max, null, CancellationToken.None);
-            }
-            catch (Exception rollbackEx)
-            {
-                throw new AggregateException(
-                    "Reorder failed and rollback also failed; the device may be in an inconsistent state.",
-                    original, rollbackEx);
-            }
+            try { await RestoreRangeAsync(origName, backup, min, max, ct); }
+            catch (Exception rb) { throw new AggregateException("Reorder failed and rollback also failed; device may be inconsistent.", original, rb); }
             throw;
         }
     }
 
-    // Writes `arrangement[slot]` content into each slot in [min,max] using temporary unique names,
-    // then sets the final names. arrangement[slot] is -1 (empty) or a snapshot key (source slot id).
-    private async Task WriteRangeAsync(
-        int[] arrangement, Dictionary<int, (string Name, PresetDocument Doc)> snap,
-        int min, int max, IProgress<ReorderProgress>? progress, CancellationToken ct)
+    // FAST PATH: rotate [min,max] in place using select+save and one temp slot.
+    private async Task RotateViaSelectSaveAsync(
+        string[] origName, int from, int to, int min, int max, int temp,
+        IProgress<ReorderProgress>? progress, CancellationToken ct)
     {
-        int total = (max - min + 1) * 2;
-        int done = 0;
+        int span = max - min;          // number of shifts
+        int total = span + 2; int done = 0;
+        string Stage = TempPrefix + "stage";
+        string Dst(int k) => TempPrefix + "d" + k;
 
-        // Phase 1: content under temporary unique names (or delete for empties).
-        for (int slot = min; slot <= max; slot++)
+        async Task Move(string sourceName, int destSlot, string destName)
         {
             ct.ThrowIfCancellationRequested();
-            int src = arrangement[slot];
-            if (src == -1)
-            {
-                await _repo.DeleteAsync(slot, ct);
-            }
-            else
-            {
-                var (_, doc) = snap[src];
-                await _repo.WritePresetToSlotAsync(slot, TempName(slot), doc, verify: true, ct);
-            }
-            progress?.Report(new ReorderProgress(++done, total, src == -1 ? $"slot {slot + 1}: clear" : $"slot {slot + 1}: content"));
+            await _repo.SelectPresetAsync(sourceName, ct);    // load source content into live
+            await _repo.RenameAsync(destSlot, destName, ct);  // name the dest so save targets it
+            await _repo.SaveCurrentAsAsync(destName, ct);     // device copies content into destSlot
         }
 
-        // Phase 2: final names (name-only; never triggers save-by-name, so duplicates are impossible here).
-        for (int slot = min; slot <= max; slot++)
+        if (from > to)   // moving up
         {
-            ct.ThrowIfCancellationRequested();
-            int src = arrangement[slot];
-            if (src != -1)
-                await _repo.RenameAsync(slot, snap[src].Name, ct);
-            progress?.Report(new ReorderProgress(++done, total, src == -1 ? $"slot {slot + 1}: (empty)" : $"slot {slot + 1}: name"));
+            await Move(origName[from], temp, Stage); progress?.Report(new ReorderProgress(++done, total, "stage"));
+            for (int k = from; k > to; k--) { await Move(origName[k - 1], k, Dst(k)); progress?.Report(new ReorderProgress(++done, total, $"slot {k + 1}")); }
+            await Move(Stage, to, Dst(to)); progress?.Report(new ReorderProgress(++done, total, $"slot {to + 1}"));
+            await _repo.DeleteAsync(temp, ct);
+            await _repo.RenameAsync(to, origName[from], ct);
+            for (int k = to + 1; k <= from; k++) await _repo.RenameAsync(k, origName[k - 1], ct);
+        }
+        else             // moving down
+        {
+            await Move(origName[from], temp, Stage); progress?.Report(new ReorderProgress(++done, total, "stage"));
+            for (int k = from; k < to; k++) { await Move(origName[k + 1], k, Dst(k)); progress?.Report(new ReorderProgress(++done, total, $"slot {k + 1}")); }
+            await Move(Stage, to, Dst(to)); progress?.Report(new ReorderProgress(++done, total, $"slot {to + 1}"));
+            await _repo.DeleteAsync(temp, ct);
+            await _repo.RenameAsync(to, origName[from], ct);
+            for (int k = from; k < to; k++) await _repo.RenameAsync(k, origName[k + 1], ct);
         }
     }
 
-    // Short temp names (the device caps names at ~31 chars; a GUID suffix would not round-trip).
-    // Unique per slot within the affected range; the collision guard in MoveAsync ensures no real
-    // preset uses this prefix.
-    private const string TempPrefix = "__sstmp_";
-    private static string TempName(int slot) => $"{TempPrefix}{slot}";
+    // FALLBACK (no temp slot): the proven param-replay write-to-slot, snapshot-based + temp names.
+    private async Task WriteRangeViaReplayAsync(
+        string[] origName, Dictionary<int, (string Name, PresetDocument Doc)> backup,
+        int from, int to, int min, int max, IProgress<ReorderProgress>? progress, CancellationToken ct)
+    {
+        var occupants = new int[origName.Length];
+        for (int i = 0; i < origName.Length; i++) occupants[i] = string.IsNullOrEmpty(origName[i]) ? -1 : i;
+        var target = SlotPlanner.Move(occupants, from, to);
+        int total = (max - min + 1) * 2; int done = 0;
+        for (int s = min; s <= max; s++)
+        {
+            int src = target[s];
+            if (src == -1) await _repo.DeleteAsync(s, ct);
+            else await _repo.WritePresetToSlotAsync(s, TempPrefix + s, backup[src].Doc, verify: true, ct);
+            progress?.Report(new ReorderProgress(++done, total, $"slot {s + 1}: content"));
+        }
+        for (int s = min; s <= max; s++)
+        {
+            int src = target[s];
+            if (src != -1) await _repo.RenameAsync(s, backup[src].Name, ct);
+            progress?.Report(new ReorderProgress(++done, total, $"slot {s + 1}: name"));
+        }
+    }
+
+    private async Task RestoreRangeAsync(
+        string[] origName, Dictionary<int, (string Name, PresetDocument Doc)> backup, int min, int max, CancellationToken ct)
+    {
+        // Rewrite each affected slot to its ORIGINAL content+name from the backup (param-replay, robust).
+        for (int s = min; s <= max; s++)
+            if (backup.TryGetValue(s, out var b)) await _repo.WritePresetToSlotAsync(s, TempPrefix + "r" + s, b.Doc, verify: false, ct);
+            else await _repo.DeleteAsync(s, ct);
+        for (int s = min; s <= max; s++)
+            if (backup.TryGetValue(s, out var b)) await _repo.RenameAsync(s, b.Name, ct);
+    }
 }
