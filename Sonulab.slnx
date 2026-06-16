@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Sonulab.Core/Sonulab.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Sonulab.Core.Tests/Sonulab.Core.Tests.csproj" />
+  </Folder>
+</Solution>
